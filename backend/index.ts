@@ -5,10 +5,12 @@ import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import authMiddleWare from "./middleware";
 import { CategoryEnum } from "@prisma/client";
+import cors from "cors"
 const client = new PrismaClient()
 const PORT = 3000;
 const app = express()
 
+app.use(cors())
 app.use(express.json())
 app.post("/api/v1/user/signup", async (req, res) => {
   try {
