@@ -4,13 +4,16 @@ import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import authMiddleWare from "./middleware";
+import { CategoryEnum } from "@prisma/client";
 const client = new PrismaClient()
 const PORT = 3000;
 const app = express()
 
+app.use(express.json())
 app.post("/api/v1/user/signup", async (req, res) => {
   try {
     const body = req.body
+
     const { success, data } = SignUpSchema.safeParse(body)
 
     if (!success) {
@@ -110,7 +113,7 @@ app.post("/api/v1/user/signin", async (req, res) => {
 app.post("/api/v1/createPost", authMiddleWare, async (req, res) => {
   try {
     const body = req.body
-
+    
     const { success, data } = PostSchema.safeParse(body)
 
     if (!success) {
@@ -120,33 +123,21 @@ app.post("/api/v1/createPost", authMiddleWare, async (req, res) => {
       })
     }
 
-    const postExist = await client.post.findFirst({
-      where: {
-        id: data.postId
-      }
-    })
-
-    if (!postExist) {
-      return res.status(404).json({
-        message: "POST_DOES_NOT_EXIST",
-        error: true
-      })
-    }
-
-    const categoryDb = await client.category.create({
+    const validCategories = data.categories.filter((cat) =>
+      Object.values(CategoryEnum).includes(cat as CategoryEnum)
+    );
+    
+    const postDb = await client.post.create({
       data: {
-        funny: data.categories.funny,
-        rant: data.categories.rant,
-        academics: data.categories.academics,
-        crush: data.categories.crush,
-        beef: data.categories.beef,
-        gossips: data.categories.gossips,
-        post_id: data.postId
+        text: data.text,
+        created_by: Number(req.userId),
+        created_at: new Date(),
+        categories: validCategories as CategoryEnum[],
       }
     })
 
     return res.status(200).json({
-      categories: categoryDb,
+      postDb,
       message: "POST_CREATED_SUCCESFULLY",
       error: false
     })
@@ -158,9 +149,194 @@ app.post("/api/v1/createPost", authMiddleWare, async (req, res) => {
   }
 })
 
+app.get("/api/v1/posts/bulk", authMiddleWare, async (req, res) => {
+  try {
+    
+    const allPosts = await client.post.findMany()
 
+    if(!allPosts) {
+      return res.status(200).json({
+        message: "NO_POSTS",
+        error: false
+      })
+    }
 
-app.listen(PORT, () => {
-  console.log("Server running " + PORT);
+    return res.status(200).json({
+      allPosts,
+      message: "",
+      error: false
+    })
 
+  } catch (error) {
+    return res.status(500).json({
+      message: error,
+      error: true
+    })
+  }
 })
+
+app.get("/api/v1/post/:userId", authMiddleWare, async (req, res) => {
+
+  try {
+    const userId = Number(req.params.userId)
+    if(!userId) {
+      return res.status(404).json({
+        message: "NO_USERID_FOUND",
+        error: true
+      })
+    }
+    const allPosts = await client.post.findMany({
+      where: {
+        created_by: userId
+      },
+    })
+
+    return res.status(200).json({
+      allPosts,
+      message: "",
+      error: false
+    })
+  } catch (error) {
+    return res.status(500).json({
+      message: error,
+      error: true
+    })  
+  }
+})
+
+app.get("/api/v1/posts/:category", authMiddleWare, async (req, res) => {
+  try {
+
+    const category = req.params.category
+
+    if(!category) {
+      return res.status(411).json({
+        message: "NO_CATEGORY_PROVIDED",
+        error: true
+      })
+    }
+    
+    if (!Object.values(CategoryEnum).includes(category as CategoryEnum)) {
+      return res.status(400).json({
+        message: "INVALID_CATEGORY",
+        error: true,
+      });
+    }
+
+    const posts = await client.post.findMany({
+      where: {
+        categories: {
+          has: category as CategoryEnum
+        }
+      },
+      orderBy: {
+        created_at: 'desc'
+      }
+    })
+
+    if(!posts.length) {
+      return res.status(404).json({
+        message: "NO_POSTS_AVAILABLE",
+        error: true
+      })
+    }
+
+    return res.status(200).json({
+      posts,
+      error: false,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      message: error,
+      error: true
+    })
+  }
+})
+
+app.get("/api/v1/post/like/:postId", authMiddleWare, async (req, res) => {
+  try {
+    const postId = req.params.postId
+
+    
+    if(!postId) {
+      return res.status(404).json({
+        message: "POST_NOT_FOUND",
+        error: true
+      })
+    }
+
+    const postDb = await client.post.findFirst({
+      where: {
+        id: Number(postId)
+      }
+    })
+
+    if(!postDb) {
+      return res.status(404).json({
+        message: "POST_NOT_AVAILABLE",
+        error: true
+      })
+    }
+    const likes = await client.like.count({
+      where: {
+        postId: postDb?.id
+      }
+    })
+
+    
+    return res.status(200).json({
+      likes,
+      error: false
+    })
+  } catch (error) {
+    return res.status(500).json({
+      message: error,
+      error: true
+    })
+  }
+})
+
+app.post("/api/v1/like/:postId", authMiddleWare, async (req, res) => {
+  try {
+    const postId = req.params.postId
+    if(!postId) {
+      return res.status(404).json({
+        message: "POST_NOT_FOUND",
+        error: true
+      })
+    }
+
+    const postExist = await client.post.findFirst({
+      where: {
+        id: Number(postId)
+      }
+    })
+
+    if(!postExist) {
+      return res.status(404).json({
+        message: "POST_NOT_FOUND",
+        error: true
+      })
+    }
+
+    const updateLike = await client.like.create({
+      data: {
+        postId: postExist.id,
+        userId: Number(req.userId)
+      }
+    })
+
+    return res.status(200).json({
+      updateLike,
+      message: "LIKE_ADDED",
+      error: false
+    })
+  } catch (error) {
+    return res.status(500).json({
+      message: error,
+      error: true
+    })
+  }
+})
+
+app.listen(PORT)

@@ -30,7 +30,7 @@ model Post {
   users       User      @relation(fields: [created_by], references: [id]) 
   created_at  DateTime         
   likes       Like[]
-  categories  Category[]
+  categories  CategoryEnum[]
 }
 
 model Like {
@@ -43,14 +43,11 @@ model Like {
   @@unique([postId, userId])
 }   
 
-model Category {
-  id        Int       @id @default(autoincrement())
-  funny     Boolean   @default(false)
-  rant      Boolean   @default(false)
-  crush     Boolean   @default(false)
-  beef      Boolean   @default(false)
-  gossips   Boolean   @default(false)
-  academics Boolean   @default(false)
-  post_id   Int
-  posts     Post      @relation(fields: [post_id], references: [id])
+enum CategoryEnum {
+  funny     
+  rant      
+  crush     
+  beef      
+  gossips   
+  academics 
 }
